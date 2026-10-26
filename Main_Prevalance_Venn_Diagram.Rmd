@@ -1,0 +1,214 @@
+---
+title: "Unique Taxa 16s"
+author: "William James"
+date: "`r Sys.Date()`"
+output: html_document
+---
+#1) Setup
+##Load Packages
+```{r 1.a packages}
+for (lib in c('tidyverse','vegan','ggplot2','eulerr','ggplotify', 'ggpubr')) {
+      suppressPackageStartupMessages(require(lib, character.only = TRUE))
+}
+```
+##read in data
+```{r 1.b}
+metadata <- read_csv('metadata_IFGvSBC.csv')
+
+data.16 <- read_csv('feature_table_16S.csv')
+taxonomy.16 <- read_tsv('taxonomy_16S.tsv')
+
+data.18 <- read_csv('feature_table_18s.csv')
+taxonomy.18 <- read_csv('taxonomy_18S.csv')
+```
+#2) Prevalance for 16s
+##filter the data
+```{r 2.a filter data and convert to presence/absence}
+#get the samples less than a threshold of seq count
+##set min-sequence count
+count_cutoff <- 4000
+
+drop_samples <- data.16 %>%
+  select(-ASV_ID) %>% #remove ASV-ID column as it is non-numeric
+  colSums() %>% #total counts per sample
+  .[. < count_cutoff] %>% #filtering the named numbers by cuttoff
+  names() 
+
+data_drop <- data.16 %>%
+  select(-any_of(drop_samples), -matches("PCR|Ext")) %>%
+  as.data.frame()
+
+#convert counts to presence/absence, merge with taxonomy
+ft_16s_merge <- data_drop %>%
+  pivot_longer(-ASV_ID, names_to = "Sample", values_to = "Counts") %>% #standard data transformation, each row is a unique ASV + Sample combo
+  #left_join(taxonomy.16) %>% #join taxonomic asignments by ASV_ID
+  #tidyr::unite(col = tax_string, Domain, Phylum, Class, Order, Family, Genus) %>%
+  group_by(Sample, ASV_ID) %>%
+  summarise(Counts = sum(Counts)) %>%
+  mutate(Value = Counts/Counts) %>% #get our presence absence, if absent will generate NaN or if present will = 1
+  mutate_all(~replace(.,is.nan(.), 0)) #convert NaN values to 0 to have a proper binary
+```
+
+##calculate the 'core' ASVs
+```{r 2.b filter to prevalant taxa}
+#set the proportion of samples the ASV is present in cuttoff
+threshold = .8
+
+prevalant_16 <- ft_16s_merge %>%
+  left_join(metadata) %>%
+  group_by(ASV_ID, IFG_SBC) %>%
+  summarise(presence = sum(Value == 1) / n()) %>%
+  arrange(desc(presence)) %>%
+  filter(presence >= threshold) %>%
+  left_join(taxonomy.16)
+```
+
+##pull lists of taxa and setup object for venn diagram
+```{r 2.c pull the unique and shared taxa}
+sbc <-  prevalant_16 %>%
+  filter(IFG_SBC == "SBC") %>%
+  pull(ASV_ID) 
+
+ifg <- prevalant_16 %>%
+  filter(IFG_SBC == "IFG") %>%
+  pull(ASV_ID) 
+
+sbc_unique <- sbc[!sbc %in% ifg]
+ifg_unique <- ifg[!ifg %in% sbc]
+shared <- intersect(ifg, sbc)
+
+export.16 <- bind_rows(
+  tibble(Substrate = "SBC_Unique",  ASV_ID = sbc_unique),
+  tibble(Substrate = "IFG_Unique",  ASV_ID = ifg_unique),
+  tibble(Substrate = "Shared_taxa", ASV_ID = shared)
+) %>%
+  left_join(taxonomy.16, by = "ASV_ID")
+
+#write_csv(export.16, "/Users/wjames/Desktop/PhD/SFT_NDIFG_SBCvS/Final_Figs/16s_prevalent_taxa.csv")
+
+#fit the lists for euler to generate the venn diagram
+sets_16 <- euler(list(IFG = ifg, SBC = sbc))
+```
+
+##plot the 16s venn diagram
+```{r 2.d prevalance venn diagram}
+venn_16s <- as.ggplot( #ggplotify here so that we can merge down the line and export neatly
+  plot(sets_16,
+       quantities = TRUE,          # show counts
+       fills      = list(fill = c("darkcyan", "goldenrod2"), alpha = 0.4),
+       edges      = list(col = "black", lwd = 1.5),
+       labels     = list(font = 2))
+) + 
+  theme(panel.background = element_rect(fill = "white"))
+
+#venn_16s
+```
+
+#3) Prevalence for 18s
+```{r 3.a dataframe filtering}
+#get the samples less than a threshold of seq count
+##set min-sequence count
+count_cutoff <- 10000
+
+drop_samples <- data.18 %>%
+  select(-ASV_ID) %>% #remove ASV-ID column as it is non-numeric
+  colSums() %>% #total counts per sample
+  .[. < count_cutoff] %>% #filtering the named numbers by cuttoff
+  names() 
+
+non.protist <- taxonomy.18 %>%
+  filter(Phylum == 'p__Vertebrata' | Class %in% c("c__Insecta", "c__Arachnida") | Domain %in% c("d__Bacteria", "d__Archaea")) %>%
+  pull(ASV_ID)
+
+data_drop <- data.18 %>%
+  filter(!ASV_ID %in% non.protist) %>%
+  select(-any_of(drop_samples), -matches("PCR|Ext")) %>%
+  as.data.frame()
+
+ft_18s_merge <- data_drop %>%
+  pivot_longer(-ASV_ID, names_to = "Sample", values_to = "Counts") %>% #standard data transformation, each row is a unique ASV + Sample combo
+  #left_join(taxonomy.18) %>% #join taxonomic asignments by ASV_ID
+  #tidyr::unite(col = tax_string, Phylum, Class, Order, Family, Genus) %>%
+  group_by(Sample, ASV_ID) %>%
+  summarise(Counts = sum(Counts)) %>%
+  mutate(Value = Counts/Counts) %>% #get our presence absence, if absent will generate NaN or if present will = 1
+  mutate_all(~replace(.,is.nan(.), 0)) #convert NaN values to 0 to have a proper binary
+```
+
+##calculate 'core' taxa
+```{r 3.b calculate prevalance}
+#set the proportion of samples the ASV is present in cuttoff
+threshold = .8
+
+prevalant_18 <- ft_18s_merge %>%
+  left_join(metadata) %>%
+  group_by(ASV_ID, IFG_SBC) %>%
+  summarise(presence = sum(Value == 1) / n()) %>%
+  arrange(desc(presence)) %>%
+  filter(presence >= threshold) 
+  
+```
+
+```{r 3.c get the ASV_IDs}
+sbc <-  prevalant_18 %>%
+  filter(IFG_SBC == "SBC") %>%
+  pull(ASV_ID) 
+
+ifg <- prevalant_18 %>%
+  filter(IFG_SBC == "IFG") %>%
+  pull(ASV_ID) 
+
+sbc_unique <- sbc[!sbc %in% ifg]
+ifg_unique <- ifg[!ifg %in% sbc]
+shared <- intersect(ifg, sbc)
+
+max_len <- max(length(sbc_unique), length(ifg_unique), length(shared))
+
+export.18 <- bind_rows(
+  tibble(Substrate = "SBC_Unique",  ASV_ID = sbc_unique),
+  tibble(Substrate = "IFG_Unique",  ASV_ID = ifg_unique),
+  tibble(Substrate = "Shared_taxa", ASV_ID = shared)
+) %>%
+  left_join(taxonomy.18, by = "ASV_ID")
+
+#write_csv(export.18,"/Users/wjames/Desktop/PhD/SFT_NDIFG_SBCvS/Final_Figs/18s_prevalent_taxa.csv")
+
+#fit the lists for euler to generate the venn diagram
+sets_18 <- euler(list(IFG = ifg, SBC = sbc))
+```
+
+##plot the 18s venn diagram
+```{r 3.d make the venn diagram}
+venn_18s <- as.ggplot( #ggplotify here so that we can merge down the line and export neatly
+  plot(sets_18,
+       quantities = TRUE,          # show counts
+       fills      = list(fill = c("darkcyan", "goldenrod2"), alpha = 0.4),
+       edges      = list(col = "black", lwd = 1.5),
+       labels     = list(font = 2))
+) + 
+  theme(panel.background = element_rect(fill = "white"))
+
+#venn_18s
+```
+
+#4) Merge and Export the plots
+```{r 4.a merge}
+venn.2 <- ggarrange(venn_16s, venn_18s,
+                    align = 'h',
+                    ncol = 2, nrow = 1,
+                    labels = 'auto')
+
+venn.2
+```
+
+```{r 4.b export}
+ggsave(
+  filename="Prevalance_Main.pdf",
+  plot = venn.2,
+  dpi = 600,
+  width = 180,
+  height = 90,
+  units = 'mm'
+)
+```
+

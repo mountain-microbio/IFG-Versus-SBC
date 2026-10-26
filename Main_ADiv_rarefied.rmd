@@ -1,0 +1,173 @@
+---
+title: "Main_Alpha_Diversity"
+output: html_document
+date: "2026-04-28"
+---
+#1) Setup
+##Read in packages and data
+```{r 1.a wd and packages}
+for (lib in c('tidyverse','janitor','rstatix','ggpubr','vegan','car','purrr')) {
+    suppressPackageStartupMessages(require(lib, character.only = TRUE))
+}
+```
+
+```{r 1.b read in data}
+median_data_rare <- readRDS("rarefied_16s_asv_table.rds") 
+median_data_rare_18 <- readRDS("rarefied_18s_asv_table.rds")
+metadata <- read_csv('metadata_IFGvSBC.csv') 
+```
+
+#2) 16S Compute Alpha Diversity and Plot
+```{r 2.a calculate alpha diversity metrics per sample}
+adiv_16s <- data.frame(
+            Richness = specnumber(median_data_rare),  #calculate species richness, 'S'
+            Shannon = diversity(median_data_rare, index = 'shannon')) %>% #calculate Shannon Index of diversity, 'H'
+            mutate(Pielou = Shannon/log(Richness)) %>% #calculate Pielou's evenness, 'J'
+            rownames_to_column(var = "Sample") %>%
+            left_join(metadata) 
+
+adiv_16s_long <- adiv_16s %>%
+  pivot_longer(cols = c(Richness,Shannon,Pielou),
+               names_to = "diversity_metric",
+               values_to = "value") %>%
+  group_by(diversity_metric, IFG_SBC) %>%
+  mutate(
+    Q1    = quantile(value, 0.25),
+    Q3    = quantile(value, 0.75),
+    IQR   = Q3 - Q1,
+    is_outlier = value < (Q1 - 1.5 * IQR) | value > (Q3 + 1.5 * IQR)
+  ) %>%
+  ungroup()
+
+adiv_16s_long$diversity_metric = factor(adiv_16s_long$diversity_metric, levels = c("Richness","Shannon","Pielou"))
+```
+
+##Box plot + KW test
+```{r 2.b plotting and KW tests}
+kw_16s_boxplot <- ggplot(data = adiv_16s_long, aes(x = IFG_SBC, y = value)) +
+  geom_boxplot(aes(fill = IFG_SBC), outlier.shape = NA, show.legend = FALSE) +
+  scale_fill_manual(values = c("darkcyan", "goldenrod2")) +
+  geom_jitter(aes(alpha = is_outlier), show.legend = FALSE, width = 0.2) +
+  scale_alpha_manual(values = c("FALSE" = 0.7, "TRUE" = 0.4)) +
+  facet_grid(diversity_metric~., scales = "free", switch='y') +
+  stat_compare_means(method = "wilcox.test", paired = FALSE,
+                     label.x = 0.7, label.y = 0.1) +
+  theme_bw() +
+  theme(panel.border = element_rect(color = "black",
+                                    fill = NA,
+                                    linewidth = 1),
+        panel.grid = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y=element_blank(),
+        strip.text = element_text(size =10, face = 'bold'),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        strip.placement = 'outside')
+
+#kw_16s_boxplot
+```
+
+##get W statistic and rrs
+```{r}
+kwu.16.S <- wilcox.test(Richness ~ IFG_SBC, data = adiv_16s)
+rrs.16.S <- adiv_16s %>%
+rstatix::wilcox_effsize(Richness ~ IFG_SBC)
+
+kwu.16.H <- wilcox.test(Shannon ~ IFG_SBC, data = adiv_16s)
+rrs.16.H <- adiv_16s %>%
+rstatix::wilcox_effsize(Shannon ~ IFG_SBC)
+
+kwu.16.J <- wilcox.test(Pielou ~ IFG_SBC, data = adiv_16s)
+rrs.16.J <- adiv_16s %>%
+rstatix::wilcox_effsize(Pielou ~ IFG_SBC)
+```
+
+
+#3) 18S Compute Alpha Diversity and Plot
+```{r 3.a calculate alpha diversity metrics per sample}
+adiv_18s <- data.frame(
+            Richness = specnumber(median_data_rare_18),  #calculate species richness, 'S'
+            Shannon = diversity(median_data_rare_18, index = 'shannon')) %>% #calculate Shannon Index of diversity, 'H'
+            mutate(Pielou = Shannon/log(Richness)) %>% #calculate Pielou's evenness, 'J'
+            rownames_to_column(var = "Sample") %>%
+            left_join(metadata) 
+
+adiv_18s_long <- adiv_18s %>%
+  pivot_longer(cols = c(Richness,Shannon,Pielou),
+               names_to = "diversity_metric",
+               values_to = "value") %>%
+  group_by(diversity_metric, IFG_SBC) %>%
+  mutate(
+    Q1    = quantile(value, 0.25),
+    Q3    = quantile(value, 0.75),
+    IQR   = Q3 - Q1,
+    is_outlier = value < (Q1 - 1.5 * IQR) | value > (Q3 + 1.5 * IQR)
+  ) %>%
+  ungroup()
+
+adiv_18s_long$diversity_metric = factor(adiv_18s_long$diversity_metric, levels = c("Richness","Shannon","Pielou"))
+```
+
+#Box plot + KW test
+```{r 3.b plotting and KW tests}
+kw_18s_boxplot <- ggplot(data = adiv_18s_long, aes(x = IFG_SBC, y = value)) +
+  geom_boxplot(aes(fill = IFG_SBC), outlier.shape = NA, show.legend = FALSE) +
+  scale_fill_manual(values = c("darkcyan", "goldenrod2")) +
+  geom_jitter(aes(alpha = is_outlier), show.legend = FALSE, width = 0.2) +
+  scale_alpha_manual(values = c("FALSE" = 0.7, "TRUE" = 0.4)) +
+  facet_grid(diversity_metric~., scales = "free", switch='y') +
+  stat_compare_means(method = "wilcox.test", paired = FALSE,
+                     label.x = 0.7, label.y = 0.1) +
+  theme_bw() +
+  theme(panel.border = element_rect(color = "black",
+                                    fill = NA,
+                                    linewidth = 1),
+        panel.grid = element_blank(),
+        axis.title.y=element_blank(),
+        axis.title.x = element_blank(),
+        strip.text = element_text(size = 10, face = 'bold'),
+        strip.placement = 'outside',
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank())
+
+#kw_18s_boxplot
+```
+
+##get W statistic and rrs
+```{r}
+kwu.18.S <- wilcox.test(Richness ~ IFG_SBC, data = adiv_18s)
+rrs.18.S <- adiv_18s %>%
+rstatix::wilcox_effsize(Richness ~ IFG_SBC)
+
+
+kwu.18.H <- wilcox.test(Shannon ~ IFG_SBC, data = adiv_18s)
+rrs.18.H <- adiv_18s %>%
+rstatix::wilcox_effsize(Shannon ~ IFG_SBC)
+
+kwu.18.J <- wilcox.test(Pielou ~ IFG_SBC, data = adiv_18s)
+rrs.18.J <- adiv_18s %>%
+rstatix::wilcox_effsize(Pielou ~ IFG_SBC)
+```
+
+#6) Combine and Export the figure
+```{r 6.a combine the figures}
+combo.adiv <- ggarrange(kw_16s_boxplot, kw_18s_boxplot,
+                        align  = 'h',
+                        ncol   = 2, nrow = 1,
+                        labels = 'auto',
+                        widths = c(1, 1))
+
+combo.adiv
+```
+
+
+```{r}
+#using ggexport here since ggsave wasnt working with the combined faceted graphs. 
+ggexport(combo.adiv,
+  filename = "ADiv_Main.pdf",
+  width = 160 / 25.4, #conversion to mm from in since thats the units ggexport uses
+  height = 120 / 25.4
+)
+```  

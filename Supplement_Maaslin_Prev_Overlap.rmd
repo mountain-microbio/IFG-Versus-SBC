@@ -1,0 +1,105 @@
+---
+title: "Maaslin_Prev_overlap"
+output: html_document
+date: "2026-05-09"
+---
+
+```{r}
+suppressPackageStartupMessages(library("tidyverse"))
+```
+
+
+#1) Read in the 16S data
+```{r}
+maaslin <- read_tsv("all_results_maaslin2_16s.tsv")
+metadata <- read_csv('metadata_IFGvSBC.csv')
+
+prev.16 <- read_csv('16s_prevalent_taxa.csv')
+taxonomy.16 <- read_tsv('taxonomy_16S.tsv') %>%
+  mutate(Taxa = paste(Domain, Phylum, Class, Order, Family, Genus, Species, sep = '; ')) %>%
+  select(ASV_ID, Taxa)
+```
+
+#2) Plot the 16s
+```{r}
+#Set up data for plotting
+rVs <- maaslin %>%
+  mutate(feature = gsub("^X", "", feature)) %>% #Maaslin adds 'X' in front of IDs starting with numbers, removing those to match with taxonomy
+  left_join(taxonomy.16, by = c("feature" = "ASV_ID")) %>%
+  mutate(enrich = ifelse(qval > 0.2, "NO",
+                  ifelse(coef > 0, "IFG",
+                  ifelse(coef < 0, "SBC", NA))))
+
+prev.16.IFG <- prev.16 %>%
+  filter(Substrate == "IFG_Unique") %>%
+  pull(ASV_ID)
+
+prev.16.SBC <- prev.16 %>%
+  filter(Substrate == "SBC_Unique") %>%
+  pull(ASV_ID)
+
+top.enrich.overlap.IFG.16 <- rVs %>%
+  slice_min(qval, n = 20) %>%
+  filter(feature %in% prev.16.IFG)
+
+top.enrich.overlap.SBC.16 <- rVs %>%
+  slice_min(qval, n = 20) %>%
+  filter(feature %in% prev.16.SBC)
+``` 
+
+#export overlap table for 16S
+```{r}
+overlap_table.16 <- rbind(top.enrich.overlap.IFG.16, top.enrich.overlap.SBC.16) %>%
+  mutate(ASV_ID = feature) %>%
+  select(ASV_ID, coef, stderr, N, pval, qval, enrich, Taxa)
+
+write_csv(overlap_table.16, 
+          '16S_enriched_prevalent_overlap.csv')
+```
+
+#18s now
+#3) Read in the 18S data
+```{r}
+taxonomy.18 <- read_csv('/Users/wjames/Desktop/PhD/SFT_NDS/data/18s/taxonomy_redownload.csv') %>%
+  mutate(Taxa = paste(Domain, Phylum, Class, Order, Family, Genus, Species, sep = '; ')) %>%
+  select(ASV_ID, Taxa)
+maaslin_18 <- read_tsv("/Users/wjames/Desktop/PhD/SFT_NDS_RvS/Final_Figs/Maaslin2_Fits/18s_maaslin_fits/all_results_18s.tsv")
+prev.18 <- read_csv('/Users/wjames/Desktop/PhD/SFT_NDS_RvS/Final_Figs/18s_prevalent_taxa.csv')
+```
+
+#4) Plot the 18s data
+```{r}
+#Set up data for plotting
+rVs.18 <- maaslin_18 %>%
+  mutate(feature = gsub("^X", "", feature)) %>% #Maaslin adds 'X' infront of IDs starting with numbers, removing those to match with taxonomy
+  left_join(taxonomy.18, by = c("feature" = "ASV_ID")) %>%
+  mutate(enrich = ifelse(qval > 0.2, "NO",
+                  ifelse(coef > 0, "IFG",
+                  ifelse(coef < 0, "SBC", NA)))) #denote which samples are enriched in either condition
+
+prev.18.IFG <- prev.18 %>%
+  filter(Substrate == "IFG_Unique") %>%
+  pull(ASV_ID)
+
+prev.18.SBC <- prev.18 %>%
+  filter(Substrate == "SBC_Unique") %>%
+  pull(ASV_ID)
+
+top.enrich.overlap.IFG.18 <- rVs.18 %>%
+  slice_min(qval, n = 20) %>%
+  filter(feature %in% prev.18.IFG)
+
+top.enrich.overlap.SBC.18 <- rVs.18 %>%
+  slice_min(qval, n = 20) %>%
+  filter(feature %in% prev.18.SBC)
+```
+
+#export overlap table for 18S
+```{r}
+overlap_table.18 <- rbind(top.enrich.overlap.IFG.18, top.enrich.overlap.SBC.18) %>%
+  mutate(ASV_ID = feature) %>%
+  select(ASV_ID, coef, stderr, N, pval, qval, enrich, Taxa)
+
+write_csv(overlap_table.18, 
+          '18S_enriched_prevalent_overlap.csv')
+```

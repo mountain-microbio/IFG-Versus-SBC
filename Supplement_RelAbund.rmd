@@ -1,0 +1,223 @@
+---
+title: "Supplement RelAbund"
+output: html_document
+date: "2026-04-27"
+---
+
+#Setup
+```{r wd and packages}
+for (lib in c('tidyverse','janitor','ggpubr','vegan')) {
+    suppressPackageStartupMessages(require(lib, character.only = TRUE))
+}
+```
+
+#1) 16s Relative abundance calculation and plotting
+```{r 1.a Read in the data}
+data <- read_csv('feature_table_16S.csv')
+taxonomy_16s <- read_tsv('taxonomy_16S.tsv')
+metadata <- read_csv('metadata_IFGvSBC') 
+```
+
+```{r 1.b determine sequence count cuttoff}
+#data %>%
+#  select(-ASV_ID) %>%
+#  colSums() %>%
+#  data.frame(counts = .) %>%
+#  ggplot(aes(x = counts)) +
+#  geom_histogram(bins = 50) +
+#  geom_vline(xintercept = 4000, color = "red", linetype = "dashed") +  # optional cutoff line
+#  labs(x = "Sample Read Count", y = "Number of Samples")
+```
+
+```{r 1.c dataframe setup for NMDS}
+#get the samples less than a threshold of seq count
+##set min-sequence count
+count_cutoff <- 4000
+
+drop_samples <- data %>%
+  select(-ASV_ID) %>% #remove ASV-ID column as it is non-numeric
+  colSums() %>% #total counts per sample
+  .[. < count_cutoff] %>% #filtering the named numbers by cuttoff
+  names() #pulling the names (sample_IDs) of numbers below the threshold set earlier
+```
+
+```{r 1.d calcuate relative abundance}
+all.16 <- data %>%
+  left_join(taxonomy_16s) %>%
+  select(-ASV_ID, -starts_with(c("Ext","PCR")), -any_of(drop_samples))  %>% #with taxonomy merged 
+  pivot_longer(-colnames(taxonomy_16s)[2:8], names_to = "Sample", values_to = "count")  %>% #pivot count columns longer
+  group_by(Domain, Phylum, Class, Sample) %>% 
+  dplyr::summarise(collapse = sum(count)) %>% #collapse duplicates per sample
+  ungroup() %>%
+  group_by(Sample) %>%
+  mutate(abund = 100*collapse/sum(collapse)) %>% #calculate relative abundance by sample /  column
+  left_join(metadata) %>%
+  group_by(Domain, Phylum, Class, Watershed, IFG_SBC) %>%
+  dplyr::summarise(relAbund =  mean(abund)) %>% #Average relative abundance across field reps
+  mutate(Class = case_when(
+  is.na(Class) & is.na(Phylum) ~ "Other",
+  is.na(Class) ~ Phylum,
+  TRUE ~ Class)) %>%
+  mutate(
+    Class = if_else(
+      Class %in% (
+        group_by(., Class) %>%
+          summarise(total = sum(relAbund, na.rm = TRUE)) %>%
+          arrange(desc(total)) %>%
+          slice_head(n = 12) %>%
+          pull(Class)
+      ),
+      Class,
+      "Other")) %>%
+  ungroup() %>%
+  complete(Class, Watershed, IFG_SBC, fill = list(relAbund = 0)) %>%
+  as.data.frame()
+```
+
+```{r}
+color.16 <- c('#004586FF','#FF420EFF', '#FFD320FF', '#579D1CFF', '#7E0021FF', '#83CAFFFF', '#314004FF', '#0084D1FF', '#4B1F6FFF', '#C5000BFF','#FF950EFF', '#666666')
+
+all.16.bar <- ggplot(all.16, aes(fill=Class, y=relAbund, x=IFG_SBC))+
+  geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values = color.16) +
+  facet_grid(~Watershed)+
+  #scale_x_discrete(guide = guide_axis(angle = 0), labels = c("Rock", "Substrate")) +
+  labs(x = "", y = "Average Relative Abundance %") +
+  theme_bw() +
+  theme(panel.border = element_rect(color = "black",
+                                    fill = "NA",
+                                    linewidth = 1),
+        panel.grid = element_blank(),
+        axis.title.y=element_text(size=8),
+        axis.text = element_text(size = 8),
+        legend.text = element_text(size=8),
+        legend.box.spacing = unit(0.45, 'pt'),
+        legend.background = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank())
+
+#all.16.bar
+```
+
+#2) 18s Relative abundance calculation and plotting
+```{r 2.a read in data}
+data.18 <- read_csv('feature_table_18s.csv')
+taxonomy.18 <- read_csv('taxonomy_18S.csv')
+```
+
+```{r 2.b pull samples and taxa to drop}
+non.protist <- taxonomy.18 %>%
+  filter(Phylum == 'p__Vertebrata' | Class %in% c("c__Insecta", "c__Arachnida") | Domain %in% c("Unassigned", "d__Bacteria", "d__Archaea")) %>%
+  pull(ASV_ID)
+
+#get the samples less than a threshold of seq count
+##set min-sequence count
+count_cutoff <- 10000
+
+drop_samples.18 <- data.18 %>%
+  select(-ASV_ID) %>% #remove ASV-ID column as it is non-numeric
+  colSums() %>% #total counts per sample
+  .[. < count_cutoff] %>% #filtering the named numbers by cuttoff
+  names() #pulling the names (sample_IDs) of numbers below the threshold set earlier
+```
+
+```{r 2.c calculate relative abundance}
+all.18 <- data.18 %>%
+  left_join(taxonomy.18) %>%
+  filter(!ASV_ID %in% non.protist) %>%
+  select(-ASV_ID, -starts_with(c("Ext","PCR")), -any_of(drop_samples.18))  %>% #drop asv-id now that taxonomy has been merged, 
+  pivot_longer(-colnames(taxonomy.18)[2:8], names_to = "Sample", values_to = "count")  %>% #pivot count columns longer
+  group_by(Domain, Phylum, Sample) %>% 
+  dplyr::summarise(collapse = sum(count)) %>%
+  ungroup() %>%
+  group_by(Sample) %>%
+  mutate(abund = 100*collapse/sum(collapse)) %>% #calculate relative abundance by sample /  column
+  left_join(metadata) %>%
+  group_by(Domain, Phylum, Watershed, IFG_SBC) %>%
+  dplyr::summarise(relAbund =  mean(abund)) %>% #Average relative abundance across field reps
+  mutate(Phylum = case_when(
+  #is.na(Class) & is.na(Phylum) ~ "Other",
+  is.na(Phylum) ~ "Other",
+  TRUE ~ Phylum)) %>%
+  mutate(
+    Phylum = if_else(
+      Phylum %in% (
+        group_by(., Phylum) %>%
+          summarise(total = sum(relAbund, na.rm = TRUE)) %>%
+          arrange(desc(total)) %>%
+          slice_head(n = 12) %>%
+          pull(Phylum)
+      ),
+      Phylum,
+      "Other")) %>%
+  ungroup() %>%
+  complete(Phylum, Watershed, IFG_SBC, fill = list(relAbund = 0)) %>%
+  as.data.frame()
+```
+
+```{r order the taxa and save the color ramp}
+all.18$Phylum <- factor(all.18$Phylum, levels = c(
+"p__Amoebozoa",
+"p__Apicomplexa",
+"p__Ascomycota",
+"p__Basidiomycota",
+"p__Cercozoa",
+"p__Chytridiomycota",
+"p__Ciliophora",
+"p__Diatomea",
+"p__Ochrophyta",
+"p__Chlorophyta",
+"p__Florideophycidae",
+"Other"))
+
+color.18 <- c('#004586FF','#FF420EFF', '#FFD320FF', '#579D1CFF', '#7E0021FF', '#83CAFFFF', '#4B1F6FFF',
+              "#B88244FF", #Diatomea
+              "#D1B000", #Ochrophyta
+              "darkgreen",#Chlorophyta
+              "darkred", #Florideophycidae
+              '#666666') #the rest of em
+```
+
+```{r}
+all.18.bar <- ggplot(all.18, aes(fill=Phylum, y=relAbund, x=IFG_SBC))+
+  geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values = color.18) +
+  facet_grid(~Watershed)+
+  #scale_x_discrete(guide = guide_axis(angle = 0), labels = c("Rock", "Substrate")) +
+  labs(x = "", y = "Average Relative Abundance %") +
+  theme_bw() +
+  theme(panel.border = element_rect(color = "black",
+                                    fill = "NA",
+                                    linewidth = 1),
+        panel.grid = element_blank(),
+        axis.title.y=element_text(size=8),
+        axis.text = element_text(size = 8),
+        legend.text = element_text(size=8),
+        legend.box.spacing = unit(0.45, 'pt'),
+        legend.background = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank())
+
+all.18.bar
+```
+
+#3C ombine the two plots
+```{r 3.a combine the plots}
+bar.2 <- ggarrange(all.16.bar, all.18.bar,
+                    align = 'v',
+                    ncol = 1, nrow = 2,
+                    labels = 'auto')
+```
+
+```{r 3.b save the final plot}
+ggsave(
+  filename="Algae_Bar_Supplement.pdf",
+  plot = bar.2,
+  dpi = 600,
+  width = 160,
+  height = 240,
+  units = 'mm'
+)
+```

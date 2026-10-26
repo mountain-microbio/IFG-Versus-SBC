@@ -1,0 +1,73 @@
+---
+title: "RockVersusSubstrate_Maaslin3"
+author: "William James"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+*Remember to cite Maaslin2! https://doi.org/10.1371/journal.pcbi.1009442*
+#1) Packages and Dataframe setup
+```{r}
+for (lib in c('tidyverse', 'janitor','BiocManager','maaslin2')) {
+      if(!require(lib, quietly = TRUE))
+        install.packages(lib)
+      else
+        suppressPackageStartupMessages(require(lib, character.only = TRUE))
+}
+```
+
+#Read in the data
+```{r}
+data <- read_csv('feature_table_18s.csv')
+metadata <- read_csv('metadata_IFGvSBC.csv')
+taxonomy.18 <- read_csv('taxonomy_18S.csv')
+```
+
+#Pull samples below depth threshold
+```{r 1.c fiilter data}
+non.protist <- taxonomy.18 %>%
+  filter(Phylum == 'p__Vertebrata' | Class %in% c("c__Insecta", "c__Arachnida") | Domain %in% c("d__Bacteria", "d__Archaea")) %>%
+  pull(ASV_ID)
+
+#get the samples less than a threshold of seq count
+##set min-sequence count
+count_cutoff <- 10000
+
+drop_samples <- data %>%
+  select(-ASV_ID) %>% #remove ASV-ID column as it is non-numeric
+  colSums() %>% #total counts per sample
+  .[. < count_cutoff] %>% #filtering the named numbers by cuttoff
+  names() 
+
+data_drop <- data %>%
+  filter(!ASV_ID %in% non.protist) %>%
+  select(-any_of(drop_samples), -matches("PCR|Ext")) %>%
+  as.data.frame()
+
+metadata_drop <- metadata %>%
+  filter(Sample %in% colnames(data_drop)) %>% #filter metadata to samples included
+  column_to_rownames(var = 'Sample')
+```
+
+#Transpose the table and get samples to rownames
+```{r}
+transposed_table <- t(data_drop) %>%
+  row_to_names(row_number = 1, remove_row = TRUE) %>% #make ASV_IDs 
+  as.data.frame() %>%
+  mutate_all(as.numeric) #coerce to numeric
+
+rownames(transposed_table) <- rownames(metadata_drop)
+```
+
+#Run Maaslin2
+```{r}
+fit_out <- Maaslin2(input_data = transposed_table,
+                    input_metadata = metadata_drop,
+                    output = '18s_maaslin_fits',
+                    fixed_effects = 'IFG_SBC',
+                    random_effects = c('Watershed','Abv_Blw','Season'))
+```

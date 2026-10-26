@@ -1,0 +1,171 @@
+---
+title: "Maaslin2_Plotting_Final"
+output: html_document
+date: "2026-04-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Setup
+```{r}
+for (lib in c('tidyverse', 'ggrepel')) {
+    suppressPackageStartupMessages(require(lib, character.only = TRUE))
+}
+```
+
+#1) Read in the 16S data
+```{r}
+taxonomy <- read_tsv('taxonomy_16S.tsv')
+maaslin <- read_tsv("all_results_maaslin2_16s.tsv")
+```
+
+#2) Plot the 16s
+```{r}
+#Set up data for plotting
+rVs <- maaslin %>%
+  mutate(feature = gsub("^X", "", feature)) %>% #Maaslin adds 'X' infront of IDs starting with numbers, removing those to match with taxonomy
+  left_join(taxonomy, by = c("feature" = "ASV_ID")) %>%
+  mutate(enrich = ifelse(qval > 0.2, "NO",
+                  ifelse(coef > 0, "UP",
+                  ifelse(coef < 0, "DW", NA)))) #denote which samples are enriched in either condition
+#pull top  differentially expressed
+t30 <- head(rVs[order(rVs$qval), "feature"], 20) #pull top N features, originally top 30 (t30) but that was a lot
+
+#add as new column to use when labeling
+#rVs$delabel <- ifelse(rVs$feature %in% t30$feature, sub(".*;\\s*", "", rVs$Family), NA) 
+rVs$delabel <- ifelse(
+  rVs$feature %in% t30$feature,
+  case_when(
+    is.na(rVs$Genus) & is.na(rVs$Family) & is.na(rVs$Order) ~ rVs$Class,
+    is.na(rVs$Genus) & is.na(rVs$Family)                    ~ rVs$Order,
+    is.na(rVs$Genus) | rVs$Genus == "g__uncultured"         ~ rVs$Family,
+    #is.na(rVs$Family) | rVs$Family == "f__Unknown_Family" ~ rVs$Order,
+    TRUE                                                    ~ sub(".*;\\s*", "", rVs$Genus)
+  ),
+  NA)
+
+#remove label from non top N features
+top <- head(rVs, n=20)
+
+#number of asvs
+n_sbc <- maaslin %>%
+  filter(qval < 0.2 & coef < 0) %>%
+  nrow()
+
+n_ifg <- maaslin %>%
+  filter(qval < 0.2 & coef > 0) %>%
+  nrow()
+
+#Generate the plot
+volcano_16 <- ggplot(data = rVs, aes(x = coef, y = -log10(qval), col = enrich, label = delabel)) +
+  geom_vline(xintercept = 0, col = "grey", linetype = 'dashed') +
+  geom_hline(yintercept = -log10(0.2), col = "grey", linetype = 'dashed') +
+  geom_point(size = 2.5) +
+  coord_cartesian(xlim = c(-5,5), ylim = c(0,8)) +
+  scale_color_manual(values = c("goldenrod2", "grey", "darkcyan"), # to set the colors of our variable
+                     labels = c("SBC", "Not Significant", "IFG")) + # to set the labels we want to overwrite the categories from the dataframe (DOWN, NO, UP)
+  labs(color = 'Material', #legend_title,<br />
+       x = 'Effect Size', y = expression("-log"[10]*"q-value")) +
+  geom_text_repel(stat = 'identity', max.overlaps = Inf, size = 5) +
+  annotate("text", x = I(0.1), y = -log10(0.2) + 0.2, label = paste(n_sbc,"ASVs"), color = "goldenrod2", size = 6) + 
+  annotate("text", x = I(0.9), y = -log10(0.2) + 0.2, label = paste(n_ifg, "ASVs"), color = "darkcyan", size = 6) +
+  theme_bw() +
+  guides(colour = guide_legend(position = 'inside')) +
+  theme(text=element_text(size=18),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none'
+        )
+
+#volcano_16
+```
+
+#3) Read in the 18S data
+```{r}
+taxonomy_18 <- read_csv('taxonomy_18S.csv')
+maaslin_18 <- read_tsv("all_results_maaslin2_18s.tsv")
+```
+
+#4) Plot the 18s data
+```{r}
+#Set up data for plotting
+rVs <- maaslin_18 %>%
+  mutate(feature = gsub("^X", "", feature)) %>% #Maaslin adds 'X' infront of IDs starting with numbers, removing those to match with taxonomy
+  left_join(taxonomy_18, by = c("feature" = "ASV_ID")) %>%
+  mutate(enrich = ifelse(qval > 0.2, "NO",
+                  ifelse(coef > 0, "UP",
+                  ifelse(coef < 0, "DW", NA)))) #denote which samples are enriched in either condition
+#pull top  differentially expressed
+t30 <- head(rVs[order(rVs$qval), "feature"], 20) #pull top N features
+#add as new column to use when labeling
+rVs$delabel <- ifelse(
+  rVs$feature %in% t30$feature,
+  case_when(
+    is.na(rVs$Genus) & is.na(rVs$Family) & is.na(rVs$Order) ~ rVs$Class,
+    is.na(rVs$Genus) & is.na(rVs$Family)                    ~ rVs$Order,
+    is.na(rVs$Genus) | rVs$Genus == "g__uncultured"         ~ rVs$Family,
+    #is.na(rVs$Family) | rVs$Family == "f__Unknown_Family" ~ rVs$Order,
+    TRUE                                                    ~ sub(".*;\\s*", "", rVs$Genus)
+  ),
+  NA)
+
+#pull the labled features
+top <- head(rVs, n=20)
+
+#number of asvs
+n_sbc <- maaslin_18 %>%
+  filter(qval < 0.2 & coef < 0) %>%
+  nrow()
+
+n_ifg <- maaslin_18 %>%
+  filter(qval < 0.2 & coef > 0) %>%
+  nrow()
+
+#Generate the plot
+volcano_18 <- ggplot(data = rVs, aes(x = coef, y = -log10(qval), col = enrich, label = delabel)) +
+  geom_vline(xintercept = 0, col = "grey", linetype = 'dashed') +
+  geom_hline(yintercept = -log10(0.2), col = "grey", linetype = 'dashed') + #significance line
+  geom_point(size = 2) +
+  scale_color_manual(values = c("goldenrod2", "grey", "darkcyan"), # to set the colors of our variable
+                     labels = c("SBC", "Not Significant", "IFG")) + # to set the labels we want to overwrite the categories from the dataframe (DW, NO, UP)
+  coord_cartesian(xlim = c(-4,4), ylim = c(0,8)) +
+  labs(color=NULL,
+       x = 'Effect Size', y = expression("-log"[10]*"q-value")) +
+  geom_text_repel(stat = 'identity', max.overlaps = Inf, size = 5) +
+  annotate("text", x = I(0.1), y = -log10(0.2) + 0.2, label = paste(n_sbc,"ASVs"), color = "goldenrod2", size = 6) + 
+  annotate("text", x = I(0.9), y = -log10(0.2) + 0.2, label = paste(n_ifg, "ASVs"), color = "darkcyan", size = 6) +
+  theme_bw() +
+  guides(colour = guide_legend(position = 'inside')) +
+  theme(text=element_text(size=18),
+        panel.grid.major = element_blank(), #make the inside of the plot blank
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.margin = margin(0, 0, 0, 0), #move legend inside the plot
+        legend.justification.inside = c(.99, 0.01)
+        )
+
+#volcano_18
+```
+
+#5 Combine the two plots
+```{r 5.a combine the plots}
+volcano.2 <- ggarrange(volcano_16, volcano_18,
+                    ncol = 2, nrow = 1,
+                    align = 'h',
+                    labels = 'auto',
+                    font.label = list(size = 20, color = 'black', face = 'bold', family = NULL))
+```
+
+```{r 5.b save the final plot}
+ggsave(
+  filename="Volcano_Main.pdf",
+  plot = volcano.2,
+  dpi = 1000,
+  width = 360,
+  height = 180,
+  units = 'mm'
+)
+```

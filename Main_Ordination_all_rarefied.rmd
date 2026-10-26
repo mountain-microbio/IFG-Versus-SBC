@@ -1,0 +1,485 @@
+---
+title: "Ordination Figures"
+output: html_document
+date: "2026-03-23"
+---
+##Setup
+```{r wd and packages}
+for (lib in c('tidyverse','vegan','ggpubr')){
+  if(!(lib %in% installed.packages()[,"Package"])){install.packages(lib)}
+    suppressPackageStartupMessages(require(lib, character.only = TRUE))
+}
+
+set.seed(80521)
+```
+
+#1) 16s ordination
+```{r 1.a read in data}
+data <- readRDS('rarefied_16s_asv_table.rds')
+metadata <- read_csv('metadata_IFGvSBC.csv') 
+```
+
+```{r 1.c dataframe setup for NMDS}
+flip <- data %>% 
+  rownames_to_column(var = "Sample") %>%
+  left_join(metadata) 
+```
+
+```{r, 1.d Distance Matrix, NMDS, and Permanova}
+#calculate bray-curtis distance, dropping non-numeric/non-count data columns
+bk.dist <- as.matrix(vegdist(select(flip, -c(Sample,colnames(metadata)))),method = "bray", na.rm = TRUE)
+
+#Permanova, IFG vs SBC + Watershed
+perm <- adonis2(bk.dist ~ Watershed + IFG_SBC, data = flip, by = "terms", permutations = 999)
+perm
+
+#Run the NMDS
+NMDS <- metaMDS(bk.dist, trymax = 200)
+
+#pull the points
+MDS1 = NMDS$points[,1]
+MDS2 = NMDS$points[,2]
+NMDS_Points = data.frame(NMDS1 = MDS1, NMDS2 = MDS2)
+```
+
+```{r 1.e Plot NMDS}
+n_stress_lab = paste0("stress = ",round(NMDS$stress, digits = 4),"\nn = ", nrow(flip))
+permanova_lab <- paste0(" Watershed: p = ",perm$`Pr(>F)`[1],', r² = ',round(perm$R2[1], digits = 3),
+                        "\nSubstratum: p = ",perm$`Pr(>F)`[2],", r² = ", round(perm$R2[2], digits = 3))
+
+NMDS_plot <- ggplot(NMDS_Points, aes(x=NMDS1, y=NMDS2))+ 
+  geom_point(size = 5, aes(col=flip$IFG_SBC, shape = flip$Watershed))+
+  labs(color = "Substratum", shape= "Watershed")+
+  scale_shape_manual(values = c(15, 19, 24)) +  #change shape of points
+  annotate(geom = 'text', x = I(0.69), y = I(0.95),
+           label = permanova_lab,
+           parse = FALSE,
+           size = 4) +
+  annotate(geom = 'text', x = I(0.15), y = I(0.95),
+           label = n_stress_lab,
+           parse = FALSE,
+           size = 4) +
+  scale_color_manual(values=c('darkcyan','goldenrod2'))+ #change color of points
+  #stat_ellipse(aes(x=NMDS1, y=NMDS2, col=flip$IFG_SBC)) +
+  coord_cartesian(ylim = c(-0.5,0.45)) +
+  #scale_x_continuous(breaks = seq(-0.4,0.6, by = 0.2)) +
+  #scale_y_continuous(breaks = seq(-0.6,0.4, by = 0.2)) +
+  theme_bw() +
+  theme(text=element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+NMDS_plot
+```
+
+##Jack's Gulch 16s
+```{r 1.c.1 JACK Distance Matrix, NMDS, and Permanova}
+jg.flip <- flip %>%
+  filter(Watershed =="JACK")
+#calculate bray-curtis distance, dropping non-numeric/non-count data columns
+jg.bk.dist <- as.matrix(vegdist(select(jg.flip, -c(Sample,colnames(metadata)))),method = "bray", na.rm = TRUE)
+
+#Permanova, IFG vs SBC + Watershed
+perm <- adonis2(jg.bk.dist ~ IFG_SBC, data = jg.flip, by = "terms", permutations = 999)
+perm
+
+#Run the NMDS
+NMDS <- metaMDS(jg.bk.dist, trymax = 200)
+
+#pull the points
+MDS1 = NMDS$points[,1]
+MDS2 = NMDS$points[,2]
+jg.NMDS_Points = data.frame(NMDS1 = MDS1, NMDS2 = MDS2)
+
+#pull statistics
+jg.n_stress_lab = paste0("stress = ",round(NMDS$stress, digits = 4),"\nn = ", nrow(jg.flip))
+jg.permanova_lab <- paste0("Substratum: p = ",perm$`Pr(>F)`[1],', r² = ',round(perm$R2[1], digits = 3))
+```
+
+```{r 1.c.2 JACK Plot NMDS}
+jg.16.NMDS_plot <- ggplot(jg.NMDS_Points, aes(x=NMDS1, y=NMDS2))+ 
+  geom_point(size = 5, aes(col=jg.flip$IFG_SBC), shape =15)+
+  labs(color = "Substratum", shape= "Watershed")+
+  annotate(geom = 'text', x = I(0.69), y = I(0.98),
+           label = jg.permanova_lab,
+           parse = FALSE,
+           size = 4) +
+  annotate(geom = 'text', x = I(0.15), y = I(0.95),
+           label = jg.n_stress_lab,
+           parse = FALSE,
+           size = 4) +
+  scale_color_manual(values=c('darkcyan','goldenrod2'))+ #change color of points
+  coord_cartesian(ylim = c(-0.4,0.45)) +
+  theme_bw() +
+  theme(text=element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+#jg.16.NMDS_plot
+```
+
+##L. Beaver 16s
+```{r 1.d.1 LBEA Distance Matrix, NMDS, and Permanova}
+lb.flip <- flip %>%
+  filter(Watershed =="LBEA")
+#calculate bray-curtis distance, dropping non-numeric/non-count data columns
+lb.bk.dist <- as.matrix(vegdist(select(lb.flip, -c(Sample,colnames(metadata)))),method = "bray", na.rm = TRUE)
+
+#Permanova, IFG vs SBC + Watershed
+perm <- adonis2(lb.bk.dist ~ IFG_SBC, data = lb.flip, by = "terms", permutations = 999)
+perm
+
+#Run the NMDS
+NMDS <- metaMDS(lb.bk.dist, trymax = 200)
+
+#pull the points
+MDS1 = NMDS$points[,1]
+MDS2 = NMDS$points[,2]
+lb.NMDS_Points = data.frame(NMDS1 = MDS1, NMDS2 = MDS2)
+
+#pull statistics
+lb.n_stress_lab = paste0("stress = ",round(NMDS$stress, digits = 4),"\nn = ", nrow(lb.flip))
+lb.permanova_lab <- paste0("Substratum: p = ",perm$`Pr(>F)`[1],', r² = ',round(perm$R2[1], digits = 3))
+```
+
+```{r 1.d.2 LBEA Plot NMDS}
+lb.16.NMDS_plot <- ggplot(lb.NMDS_Points, aes(x=NMDS1, y=NMDS2))+ 
+  geom_point(size = 5, aes(col=lb.flip$IFG_SBC), shape =19)+
+  labs(color = "Substratum", shape= "Watershed")+
+  annotate(geom = 'text', x = I(0.69), y = I(0.98),
+           label = lb.permanova_lab,
+           parse = FALSE,
+           size = 4) +
+  annotate(geom = 'text', x = I(0.15), y = I(0.95),
+           label = lb.n_stress_lab,
+           parse = FALSE,
+           size = 4) +
+  scale_color_manual(values=c('darkcyan','goldenrod2'))+ #change color of points
+  coord_cartesian(ylim = c(-0.4,0.4)) +
+  theme_bw() +
+  theme(text=element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+#lb.16.NMDS_plot
+```
+
+##Pennock Crk. 16s
+```{r 1.e.1 PENN Distance Matrix, NMDS, and Permanova}
+pn.flip <- flip %>%
+  filter(Watershed =="PENN")
+#calculate bray-curtis distance, dropping non-numeric/non-count data columns
+pn.bk.dist <- as.matrix(vegdist(select(pn.flip, -c(Sample,colnames(metadata)))),method = "bray", na.rm = TRUE)
+
+#Permanova, IFG vs SBC + Watershed
+perm <- adonis2(pn.bk.dist ~ IFG_SBC, data = pn.flip, by = "terms", permutations = 999)
+perm
+
+#Run the NMDS
+NMDS <- metaMDS(pn.bk.dist, trymax = 200)
+
+#pull the points
+MDS1 = NMDS$points[,1]
+MDS2 = NMDS$points[,2]
+pn.NMDS_Points = data.frame(NMDS1 = MDS1, NMDS2 = MDS2)
+
+#pull statistics
+pn.n_stress_lab = paste0("stress = ",round(NMDS$stress, digits = 4),"\nn = ", nrow(pn.flip))
+pn.permanova_lab <- paste0("Substratum: p = ",perm$`Pr(>F)`[1],', r² = ',round(perm$R2[1], digits = 3))
+```
+
+```{r 1.e.2 PENN Plot NMDS}
+pn.16.NMDS_plot <- ggplot(pn.NMDS_Points, aes(x=NMDS1, y=NMDS2))+ 
+  geom_point(size = 5, aes(col=pn.flip$IFG_SBC), shape = 24)+
+  labs(color = "Substratum", shape= "Watershed")+
+  annotate(geom = 'text', x = I(0.69), y = I(0.98),
+           label = pn.permanova_lab,
+           parse = FALSE,
+           size = 4) +
+  annotate(geom = 'text', x = I(0.15), y = I(0.95),
+           label = pn.n_stress_lab,
+           parse = FALSE,
+           size = 4) +
+  scale_color_manual(values=c('darkcyan','goldenrod2'))+ #change color of points
+  coord_cartesian(xlim = c(-0.6,0.45), ylim = c(-0.4,0.35)) +
+  theme_bw() +
+  theme(text=element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+#pn.16.NMDS_plot
+```
+
+#2) Now for the 18s Ordination
+```{r 2.a.1 read in the 18s data}
+data.18 <- readRDS('rarefied_18s_asv_table.rds')
+taxonomy.18 <- read_csv('taxonomy_18S.csv')
+```
+
+```{r 2.a.2 get non-protist ASVs}
+non.protist <- taxonomy.18 %>%
+  filter(Phylum == 'p__Vertebrata' | Class %in% c("c__Insecta", "c__Arachnida") | Domain %in% c("d__Bacteria", "d__Archaea")) %>%
+  pull(ASV_ID)
+```
+
+```{r 2.c setup the dataframe}
+flip.18 <- data.18 %>%
+  select(-any_of(non.protist)) %>% #these are already removed in making the rarefied feature table
+  rownames_to_column(var = "Sample") %>%
+  left_join(metadata) 
+```
+
+```{r, 2.d Distance Matrix, NMDS, and Permanova}
+set.seed(80521)
+
+#calculate bray-curtis distance, dropping non-numeric/non-count data columns
+bk.dist.18 <- as.matrix(vegdist(select(flip.18, -c(Sample,colnames(metadata)))),method = "bray", na.rm = TRUE)
+
+#Permanova, IFG vs SBC + Watershed
+perm.18 <- adonis2(bk.dist.18 ~ Watershed + IFG_SBC, data = flip.18, by = "terms", permutations = 999)
+perm.18
+
+#Run the NMDS
+NMDS.18 <- metaMDS(bk.dist.18, trymax = 200)
+
+#pull the points
+MDS1.18 = NMDS.18$points[,1]
+MDS2.18 = NMDS.18$points[,2]
+NMDS_Points.18 = data.frame(NMDS1 = MDS1.18, NMDS2 = MDS2.18)
+```
+
+```{r 2.e Plot the NMDS}
+n_stress_lab.18 = paste0("stress = ",round(NMDS.18$stress, digits = 4),"\nn = ", nrow(flip.18))
+permanova_lab.18 <- paste0("  Watershed: p = ",perm.18$`Pr(>F)`[1],', r² = ',round(perm.18$R2[1], digits = 3),
+                        "\nSubstratum: p = ",perm.18$`Pr(>F)`[2],", r² =  ", round(perm.18$R2[2], digits = 3))
+
+NMDS_plot.18 <- ggplot(NMDS_Points.18, aes(x=NMDS1, y=NMDS2))+ 
+  geom_point(size = 5, aes(col=flip.18$IFG_SBC, shape = flip.18$Watershed))+
+  labs(color = "Substratum", shape= "Watershed")+
+  scale_shape_manual(values = c(15, 19, 24)) +  #change shape of points
+  annotate(geom = 'text', x = I(0.69), y = I(0.95),
+           label = permanova_lab.18,
+           parse = FALSE,
+           size = 4) +
+  annotate(geom = 'text', x = I(0.15), y = I(0.95),
+           label = n_stress_lab.18,
+           parse = FALSE,
+           size = 4) +
+  scale_color_manual(values=c('darkcyan','goldenrod2'))+ #change color of points
+  coord_cartesian(ylim = c(-0.5,0.5)) +
+  #stat_ellipse(aes(x=NMDS1, y=NMDS2, col=flip$IFG_SBC)) +
+  theme_bw() +
+  theme(text=element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.background = element_blank(),            # wont cover up data
+        legend.text = element_text(size = 11),           # smaller text
+        legend.title = element_text(size = 12),          # smaller title
+        legend.key.size = unit(0.8, 'lines'),           # smaller symbols
+        legend.spacing.y = unit(0.1, 'cm'),             # tighter vertical spacing
+        legend.box.spacing = unit(0.1, 'pt'),
+        legend.margin = margin(t = 0, r = 5, b = 0, l = 5),  # tighter margins
+        legend.position = 'inside',
+        legend.position.inside = c(.18, .01),
+        legend.justification = c("left", "bottom"),
+        legend.direction = "horizontal")
+#NMDS_plot.18
+```
+
+##Jack's Gulch 18s
+```{r 2.c.1 JACK Distance Matrix, NMDS, and Permanova}
+set.seed(80521)
+
+jg.flip.18 <- flip.18 %>%
+  filter(Watershed =="JACK")
+#calculate bray-curtis distance, dropping non-numeric/non-count data columns
+jg.bk.dist <- as.matrix(vegdist(select(jg.flip.18, -c(Sample,colnames(metadata)))),method = "bray", na.rm = TRUE)
+
+#Permanova, IFG vs SBC + Watershed
+perm <- adonis2(jg.bk.dist ~ IFG_SBC, data = jg.flip.18, by = "terms", permutations = 999)
+perm
+
+#Run the NMDS
+NMDS <- metaMDS(jg.bk.dist, trymax = 200)
+
+#pull the points
+MDS1 = NMDS$points[,1]
+MDS2 = NMDS$points[,2]
+jg.NMDS_Points.18 = data.frame(NMDS1 = MDS1, NMDS2 = MDS2)
+
+#pull statistics
+jg.n_stress_lab.18 = paste0("stress = ",round(NMDS$stress, digits = 4),"\nn = ", nrow(jg.flip.18))
+jg.permanova_lab.18 <- paste0("Substratum: p = ",perm$`Pr(>F)`[1],', r² = ',round(perm$R2[1], digits = 3))
+```
+
+```{r 2.c.2 JACK Plot NMDS}
+jg.18.NMDS_plot <- ggplot(jg.NMDS_Points.18, aes(x=NMDS1, y=NMDS2))+ 
+  geom_point(size = 5, aes(col=jg.flip.18$IFG_SBC), shape =15)+
+  labs(color = "Substratum", shape= "Watershed")+
+  annotate(geom = 'text', x = I(0.69), y = I(0.98),
+           label = jg.permanova_lab.18,
+           parse = FALSE,
+           size = 4) +
+  annotate(geom = 'text', x = I(0.15), y = I(0.95),
+           label = jg.n_stress_lab.18,
+           parse = FALSE,
+           size = 4) +
+  scale_color_manual(values=c('darkcyan','goldenrod2'))+ #change color of points
+  coord_cartesian(xlim = c(-0.5,0.5), ylim = c(-0.35,0.6)) +
+  theme_bw() +
+  theme(text=element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+#jg.18.NMDS_plot
+```
+
+##L. Beaver 18s
+```{r 2.d.1 LBEA Distance Matrix, NMDS, and Permanova}
+set.seed(80521)
+
+lb.flip.18 <- flip.18 %>%
+  filter(Watershed =="LBEA")
+#calculate bray-curtis distance, dropping non-numeric/non-count data columns
+lb.bk.dist <- as.matrix(vegdist(select(lb.flip.18, -c(Sample,colnames(metadata)))),method = "bray", na.rm = TRUE)
+
+#Permanova, IFG vs SBC + Watershed
+perm <- adonis2(lb.bk.dist ~ IFG_SBC, data = lb.flip.18, by = "terms", permutations = 999)
+perm
+
+#Run the NMDS
+NMDS <- metaMDS(lb.bk.dist, trymax = 200)
+
+#pull the points
+MDS1 = NMDS$points[,1]
+MDS2 = NMDS$points[,2]
+lb.NMDS_Points.18 = data.frame(NMDS1 = MDS1, NMDS2 = MDS2)
+
+#pull statistics
+lb.n_stress_lab.18 = paste0("stress = ",round(NMDS$stress, digits = 4),"\nn = ", nrow(lb.flip.18))
+lb.permanova_lab.18 = paste0("Substratum: p = ",perm$`Pr(>F)`[1],', r² = ',round(perm$R2[1], digits = 3))
+```
+
+```{r 2.d.2 LBEA Plot NMDS}
+lb.18.NMDS_plot <- ggplot(lb.NMDS_Points.18, aes(x=NMDS1, y=NMDS2))+ 
+  geom_point(size = 5, aes(col=lb.flip.18$IFG_SBC), shape =19)+
+  labs(color = "Substratum", shape= "Watershed")+
+  annotate(geom = 'text', x = I(0.69), y = I(0.98),
+           label = lb.permanova_lab.18,
+           parse = FALSE,
+           size = 4) +
+  annotate(geom = 'text', x = I(0.15), y = I(0.95),
+           label = lb.n_stress_lab.18,
+           parse = FALSE,
+           size = 4) +
+  scale_color_manual(values=c('darkcyan','goldenrod2'))+ #change color of points
+  coord_cartesian(ylim = c(-0.45,0.35)) +
+  theme_bw() +
+  theme(text=element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+#lb.18.NMDS_plot
+```
+
+##Pennock Crk. 18s
+```{r 2.e.1 PENN Distance Matrix, NMDS, and Permanova}
+set.seed(80521)
+
+pn.flip.18 <- flip.18 %>%
+  filter(Watershed =="PENN")
+#calculate bray-curtis distance, dropping non-numeric/non-count data columns
+pn.bk.dist <- as.matrix(vegdist(select(pn.flip.18, -c(Sample,colnames(metadata)))),method = "bray", na.rm = TRUE)
+
+#Permanova, IFG vs SBC + Watershed
+perm <- adonis2(pn.bk.dist ~ IFG_SBC, data = pn.flip.18, by = "terms", permutations = 999)
+perm
+
+#Run the NMDS
+NMDS <- metaMDS(pn.bk.dist, trymax = 200)
+
+#pull the points
+MDS1 = NMDS$points[,1]
+MDS2 = NMDS$points[,2]
+pn.NMDS_Points.18 = data.frame(NMDS1 = MDS1, NMDS2 = MDS2)
+
+#pull statistics
+pn.n_stress_lab.18 = paste0("stress = ",round(NMDS$stress, digits = 4),"\nn = ", nrow(pn.flip.18))
+pn.permanova_lab.18 <- paste0("Substratum: p = ",perm$`Pr(>F)`[1],', r² = ',round(perm$R2[1], digits = 3))
+```
+
+```{r 2.e.2 PENN Plot NMDS}
+pn.18.NMDS_plot <- ggplot(pn.NMDS_Points.18, aes(x=NMDS1, y=NMDS2))+ 
+  geom_point(size = 5, aes(col=pn.flip.18$IFG_SBC), shape = 24)+
+  labs(color = "Substratum", shape= "Watershed")+
+  annotate(geom = 'text', x = I(0.69), y = I(0.98),
+           label = pn.permanova_lab.18,
+           parse = FALSE,
+           size = 4) +
+  annotate(geom = 'text', x = I(0.15), y = I(0.95),
+           label = pn.n_stress_lab.18,
+           parse = FALSE,
+           size = 4) +
+  scale_color_manual(values=c('darkcyan','goldenrod2'))+ #change color of points
+  coord_cartesian(xlim = c(-0.55,0.55), ylim = c(-0.5,0.4)) +
+  theme_bw() +
+  theme(text=element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+#pn.18.NMDS_plot
+```
+
+#3 Combine the plots
+###Horizonal
+#```{r 3.a combine the plots}
+#ordi.all <- ggarrange(NMDS_plot,jg.16.NMDS_plot,lb.16.NMDS_plot,pn.16.NMDS_plot,
+#                      NMDS_plot.18,jg.18.NMDS_plot,lb.18.NMDS_plot,pn.18.NMDS_plot,
+#                    ncol = 4, nrow = 2,
+#                    align = 'hv',
+#                    labels = 'auto',
+#                    font.label = list(size = 20, color = 'black', face = 'bold', family = NULL)) 
+#```
+
+
+#```{r 3.b save the final plot}
+#ggexport(
+#  filename="Ordi_Main_Rarefied.png",
+#  plot = ordi.all,
+#  dpi = 600,
+#  width = 38400 / 25.4,
+#  height = 19200 / 25.4 #ggexport uses inches for dimensions
+#)
+#```
+
+###Vertical
+```{r 3.a combine the plots}
+ordi.all <- ggarrange(NMDS_plot,NMDS_plot.18,
+                      jg.16.NMDS_plot, jg.18.NMDS_plot,
+                      lb.16.NMDS_plot, lb.18.NMDS_plot,
+                      pn.16.NMDS_plot,pn.18.NMDS_plot,
+                    ncol = 2, nrow = 4,
+                    align = 'hv',
+                    labels = c('a','e','b','f','c','g','d','h'), #auto if going horizontal
+                    font.label = list(size = 20, color = 'black', face = 'bold', family = NULL)) 
+```
+
+
+```{r 3.b save the final plot}
+ggexport(
+  filename="Ordi_Main_Rarefied_vertical.png",
+  plot = ordi.all,
+  dpi = 600,
+  width = 19200 / 25.4, #ggexport uses inches for dimensions
+  height = 38400 / 25.4
+)
+```
+
